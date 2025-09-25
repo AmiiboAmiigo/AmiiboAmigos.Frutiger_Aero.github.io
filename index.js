@@ -292,7 +292,11 @@ loadEnvironment("kloofendal_48d_partly_cloudy_puresky_4k.hdr", () => {
     });
   });
 
-  // ---- Fish ----
+
+//---------------------- //
+// -------- Fish ------- //
+//---------------------- //
+
   const fishSwimmers = [];
 
   function addFish(path, { name = "Fish", scale = 1.5, tankPosition = [0, 5, 0] }) {
@@ -410,15 +414,16 @@ loadEnvironment("kloofendal_48d_partly_cloudy_puresky_4k.hdr", () => {
 
 
 
+//---------------------- //
+// ---- Butterflies ---- //
+//---------------------- //
 
-  
-// ---- Butterflies (preferred-flowers + more sporadic behavior + model rotated left) ----
 const butterflyFliers = [];
 
 // ---- addButterfly (tweaked: faster, more unpredictable, vertical movement) ----
 function addButterfly(path, { name = "Butterfly", scale = 0.9, spawnPosition = null } = {}) {
-  const l = new GLTFLoader();
-  l.load(path, (gltf) => {
+  const loader = new GLTFLoader();
+  loader.load(path, (gltf) => {
     const model = gltf.scene;
     model.name = name;
     model.scale.setScalar(scale);
@@ -429,11 +434,11 @@ function addButterfly(path, { name = "Butterfly", scale = 0.9, spawnPosition = n
 
     // spawn band inside dome
     const minH = 1.5;
-    const maxH = Math.min(18, domeHeight + 8);
+    const maxH = Math.min(18, (typeof domeHeight === 'number' ? domeHeight : 18) + 8);
     if (spawnPosition) parent.position.set(...spawnPosition);
     else {
       const angle = Math.random() * Math.PI * 2;
-      const r = Math.sqrt(Math.random()) * radius * 0.65;
+      const r = Math.sqrt(Math.random()) * (typeof radius === 'number' ? radius : 30) * 0.65;
       parent.position.set(Math.cos(angle) * r, minH + Math.random() * (maxH - minH), Math.sin(angle) * r);
     }
 
@@ -446,28 +451,29 @@ function addButterfly(path, { name = "Butterfly", scale = 0.9, spawnPosition = n
     const mixer = new THREE.AnimationMixer(model);
     if (gltf.animations && gltf.animations.length) gltf.animations.forEach((clip) => mixer.clipAction(clip).play());
 
-    // Behavior params (more energetic / unpredictable)
+    // Behavior params (energetic & unpredictable)
     let state = "glide";
-    // faster base speeds than before
-    const baseCruise = 0.45 + Math.random() * 0.9; // increased baseline
+    const baseCruise = 0.45 + Math.random() * 0.9; // baseline speed
     const maxSpeed = baseCruise * (1.6 + Math.random() * 1.0);
-    const energy = 0.4 + Math.random() * 1.0; // lower energy -> more twitchy
-    let direction = new THREE.Vector3((Math.random() - 0.5), (Math.random() - 0.3) * 0.25, (Math.random() - 0.5)).normalize();
+    const energy = 0.4 + Math.random() * 1.0; // affects twitchiness
+    const direction = new THREE.Vector3((Math.random() - 0.5), (Math.random() - 0.3) * 0.25, (Math.random() - 0.5)).normalize();
     const timers = { stateTimer: 0.4 + Math.random() * 1.2, panicTimer: 0 };
-    const flowerAffinity = 0.6 + Math.random() * 1.4;
+
+    // flower preference
+    const flowerAffinity = 0.6 + Math.random() * 1.4; // higher => more likely to visit/hover flowers
 
     // vertical motion params
     const verticalPhase = Math.random() * Math.PI * 2;
-    const verticalFreq = 0.6 + Math.random() * 1.6; // cycles/sec
+    const verticalFreq = 0.6 + Math.random() * 1.6;
     const verticalAmp = 0.06 + Math.random() * 0.12;
 
-    // unpredictability: more frequent flits/twitches & occasional burst
+    // spontaneity params
     const flitChance = 0.04 + Math.random() * 0.06;
     const pauseChance = 0.002 + Math.random() * 0.006;
     const twitchChance = 0.02 + Math.random() * 0.04;
     const burstChance = 0.008 + Math.random() * 0.01;
 
-    // sample nearby flowers (if petalMesh exists)
+    // Build a small sampled set of nearby flowers (only done once at spawn)
     const nearbyFlowers = [];
     try {
       if (typeof petalMesh !== "undefined" && petalMesh.count > 0) {
@@ -481,39 +487,75 @@ function addButterfly(path, { name = "Butterfly", scale = 0.9, spawnPosition = n
           nearbyFlowers.push(tmpPos.clone());
         }
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      // ignore sampling errors
+    }
 
     // main wander target
     const wanderTarget = new THREE.Vector3();
     function pickWander() {
       const a = Math.random() * Math.PI * 2;
-      const rr = Math.sqrt(Math.random()) * radius * (0.35 + Math.random() * 0.45);
+      const rr = Math.sqrt(Math.random()) * (typeof radius === 'number' ? radius : 30) * (0.35 + Math.random() * 0.45);
       const ty = minH + Math.random() * (maxH - minH);
       wanderTarget.set(Math.cos(a) * rr, Math.max(ty, minH + 0.4), Math.sin(a) * rr);
     }
     pickWander();
 
-    // state object
+    // store state object and preallocate per-butterfly temps (avoid allocations in loop)
     const b = {
-      parent, model, mixer, scale, state, baseCruise, maxSpeed, energy, direction, timers,
-      verticalPhase, verticalFreq, verticalAmp, flitChance, pauseChance, twitchChance,
-      burstChance, wanderTarget, nearbyFlowers, flowerAffinity,
-      _lastPos: parent.position.clone(), _stuckTime: 0
+      parent,
+      model,
+      mixer,
+      scale,
+      state,
+      baseCruise,
+      maxSpeed,
+      energy,
+      direction,
+      timers,
+      verticalPhase,
+      verticalFreq,
+      verticalAmp,
+      flitChance,
+      pauseChance,
+      twitchChance,
+      burstChance,
+      wanderTarget,
+      nearbyFlowers,
+      flowerAffinity,
+      _lastPos: parent.position.clone(),
+      _stuckTime: 0,
+      _flitTarget: null,
+      hoverCenter: null,
+      // per-butterfly temps
+      _tmpDesired: new THREE.Vector3(),
+      _tmpClosest: new THREE.Vector3(),
+      _tmpNormal: new THREE.Vector3(),
+      _tmpToCenter: new THREE.Vector3(),
+      _tmpQ: new THREE.Quaternion(),
+      _tmpForward: new THREE.Vector3(0,0,-1),
+      _tmpRight: new THREE.Vector3(),
+      _desiredDir: new THREE.Vector3()
     };
 
-    // flight function with reused temps to reduce GC
+    // flight function (uses b's preallocated temps)
     function flyButterfly(delta) {
-      const tmpDesired = flyButterfly._tmpDesired || (flyButterfly._tmpDesired = new THREE.Vector3());
-      const tmpClosest = flyButterfly._tmpClosest || (flyButterfly._tmpClosest = new THREE.Vector3());
-      const tmpNormal = flyButterfly._tmpNormal || (flyButterfly._tmpNormal = new THREE.Vector3());
-      const tmpToCenter = flyButterfly._tmpToCenter || (flyButterfly._tmpToCenter = new THREE.Vector3());
-      const tmpQ = flyButterfly._tmpQ || (flyButterfly._tmpQ = new THREE.Quaternion());
+      if (!b || !b.parent) return;
+      const parent = b.parent;
+      const tmpDesired = b._tmpDesired;
+      const tmpClosest = b._tmpClosest;
+      const tmpNormal = b._tmpNormal;
+      const tmpToCenter = b._tmpToCenter;
+      const tmpQ = b._tmpQ;
+      const forwardVec = b._tmpForward;
+      const rightVec = b._tmpRight;
+      const desiredDirVec = b._desiredDir;
 
       // timers
       b.timers.stateTimer -= delta;
       if (b.timers.panicTimer > 0) b.timers.panicTimer -= delta;
 
-      // quick escape near player (stronger, faster lerp so they don't hang around)
+      // quick escape near player
       if (typeof playerCapsule !== "undefined" && playerCapsule) {
         const playerPos = playerCapsule.end;
         const distSq = parent.position.distanceToSquared(playerPos);
@@ -527,23 +569,22 @@ function addButterfly(path, { name = "Butterfly", scale = 0.9, spawnPosition = n
         }
       }
 
-      // very occasional abrupt twitch or lateral jolt
+      // occasional twitch/jolt
       if (Math.random() < b.twitchChance * (1 + (1 - b.energy))) {
         const twitch = new THREE.Vector3((Math.random() - 0.5), (Math.random() - 0.5) * 0.6, (Math.random() - 0.5)).normalize();
         b.direction.lerp(twitch, 0.7).normalize();
-        // small chance for speed burst
         if (Math.random() < b.burstChance) {
           parent.userData._butterflySpeed = Math.max(parent.userData._butterflySpeed || b.baseCruise, Math.min(b.maxSpeed * 1.1, b.baseCruise * (1.6 + Math.random())));
         }
       }
 
-      // spontaneous hover (more likely if near flowers and higher affinity)
+      // spontaneous hover near flowers (biased by affinity)
       if (Math.random() < b.pauseChance * (1 + b.flowerAffinity) && b.state !== "escape" && b.timers.stateTimer > 0.12) {
         b.state = "hover";
         b.timers.stateTimer = (0.6 + Math.random() * 1.6) * (1 + 0.8 * b.flowerAffinity);
       }
 
-      // state switching (more spontaneity)
+      // state switching
       if (b.timers.stateTimer <= 0) {
         const r = Math.random();
         if (b.state === "glide") {
@@ -554,6 +595,7 @@ function addButterfly(path, { name = "Butterfly", scale = 0.9, spawnPosition = n
             const f = b.nearbyFlowers[idx];
             b.wanderTarget.copy(f); b.wanderTarget.y += 0.24 + Math.random() * 0.5;
             b.timers.stateTimer = (1.2 + Math.random() * 2.2) * (1 + 1.0 * b.flowerAffinity);
+            b.hoverCenter = b.wanderTarget.clone();
           } else if (r < 0.28) {
             b.state = "figure8";
             const center = parent.position.clone();
@@ -577,11 +619,22 @@ function addButterfly(path, { name = "Butterfly", scale = 0.9, spawnPosition = n
       let desiredSpeed = b.baseCruise;
       if (b.state === "glide") {
         desiredSpeed = b.baseCruise * (0.95 + Math.random() * 0.45);
+        // occasionally prefer the nearest flower
         if (b.nearbyFlowers.length && Math.random() < 0.025 * b.flowerAffinity) {
-          const idx = Math.floor(Math.random() * b.nearbyFlowers.length);
-          const f = b.nearbyFlowers[idx];
-          b.wanderTarget.copy(f); b.wanderTarget.y = Math.max(b.wanderTarget.y + 0.25 + Math.random() * 0.4, minH + 0.5);
-          b.timers.stateTimer = (0.6 + Math.random() * 1.2) * (1 + 0.8 * b.flowerAffinity);
+          // find nearest sampled flower
+          let bestIdx = -1, bestD = Infinity;
+          for (let fi = 0; fi < b.nearbyFlowers.length; fi++) {
+            const d = parent.position.distanceToSquared(b.nearbyFlowers[fi]);
+            if (d < bestD) { bestD = d; bestIdx = fi; }
+          }
+          if (bestIdx >= 0) {
+            const f = b.nearbyFlowers[bestIdx];
+            b.wanderTarget.copy(f); b.wanderTarget.y = Math.max(b.wanderTarget.y + 0.25 + Math.random() * 0.4, minH + 0.5);
+            b.timers.stateTimer = (0.6 + Math.random() * 1.2) * (1 + 0.8 * b.flowerAffinity);
+            b.hoverCenter = b.wanderTarget.clone();
+          } else if (parent.position.distanceToSquared(b.wanderTarget) < 0.5 || Math.random() < 0.02) {
+            pickWander();
+          }
         } else if (parent.position.distanceToSquared(b.wanderTarget) < 0.5 || Math.random() < 0.02) pickWander();
       } else if (b.state === "flit") {
         desiredSpeed = Math.min(b.maxSpeed, b.baseCruise * (1.9 + Math.random() * 2.0));
@@ -617,25 +670,23 @@ function addButterfly(path, { name = "Butterfly", scale = 0.9, spawnPosition = n
       if (distToTarget > 0.0001) tmpDesired.normalize().multiplyScalar(desiredSpeed);
       else tmpDesired.set((Math.random() - 0.5) * 0.04, (Math.random() - 0.5) * 0.03, (Math.random() - 0.5) * 0.04);
 
-      // continuous vertical sinusoidal motion added
-      const time = performance.now() * 0.001;
-      const sine = Math.sin(time * b.verticalFreq + b.verticalPhase);
+      // continuous vertical sinusoidal motion
+      const tNow = performance.now() * 0.001;
+      const sine = Math.sin(tNow * b.verticalFreq + b.verticalPhase);
       tmpDesired.y += sine * b.verticalAmp;
 
-      // occasional climb or dive phase (short lived)
-      if (Math.random() < 0.003) {
-        tmpDesired.y += (Math.random() < 0.5 ? 1 : -1) * (0.08 + Math.random() * 0.12);
-      }
+      // occasional climb or dive phase
+      if (Math.random() < 0.003) tmpDesired.y += (Math.random() < 0.5 ? 1 : -1) * (0.08 + Math.random() * 0.12);
 
-      // steering toward desired direction
-      const desiredDir = tmpDesired.clone().normalize();
-      b.direction.lerp(desiredDir, 0.08 + Math.random() * 0.06).normalize();
+      // steering toward desired direction (smoothed)
+      desiredDirVec.copy(tmpDesired).normalize();
+      b.direction.lerp(desiredDirVec, 0.08 + Math.random() * 0.06).normalize();
 
-      // soft collision avoidance
+      // soft collision avoidance against simpleColliders
       const nextPos = parent.position.clone().addScaledVector(b.direction, desiredSpeed * delta);
-      for (let c = 0; c < simpleColliders.length; c++) {
+      for (let c = 0; c < (Array.isArray(simpleColliders) ? simpleColliders.length : 0); c++) {
         const col = simpleColliders[c];
-        const rsum = col.sphere.radius + (b.scale * 0.45);
+        const rsum = (col.sphere && col.sphere.radius ? col.sphere.radius : 0) + (b.scale * 0.45);
         if (nextPos.distanceToSquared(col.sphere.center) > (rsum * rsum)) continue;
 
         tmpClosest.copy(nextPos).clamp(col.box.min, col.box.max);
@@ -652,7 +703,7 @@ function addButterfly(path, { name = "Butterfly", scale = 0.9, spawnPosition = n
         }
       }
 
-      // ensure speed tracking and minSpeed protection
+      // ensure speed tracking and minSpeed
       if (parent.userData._butterflySpeed === undefined) parent.userData._butterflySpeed = b.baseCruise;
       const minSpeed = Math.max(0.04, b.baseCruise * 0.28);
       const currentSpeed = parent.userData._butterflySpeed || 0;
@@ -677,7 +728,7 @@ function addButterfly(path, { name = "Butterfly", scale = 0.9, spawnPosition = n
 
       // keep inside dome & clamp vertical
       const horizontalDist = Math.sqrt(parent.position.x * parent.position.x + parent.position.z * parent.position.z);
-      const maxDist = radius * 0.92;
+      const maxDist = (typeof radius === 'number' ? radius : 30) * 0.92;
       if (horizontalDist > maxDist) {
         tmpToCenter.subVectors(new THREE.Vector3(0, parent.position.y, 0), parent.position).normalize();
         b.direction.lerp(tmpToCenter, 0.6).normalize();
@@ -686,28 +737,27 @@ function addButterfly(path, { name = "Butterfly", scale = 0.9, spawnPosition = n
       if (parent.position.y < minH) parent.position.y = minH + 0.02;
       else if (parent.position.y > maxH) parent.position.y = maxH - 0.02;
 
-      // orientation & banking (subtle)
+      // orientation & banking
       if (b.direction.lengthSq() > 1e-6) {
-        const forward = new THREE.Vector3(0, 0, -1);
-        const targetQ = tmpQ.identity().setFromUnitVectors(forward, b.direction.clone().normalize());
-        const up = new THREE.Vector3(0, 1, 0);
-        const right = new THREE.Vector3().crossVectors(b.direction, up).normalize();
-        const lateral = desiredDir.dot(right);
+        // target rotation: rotate forwardVec (0,0,-1) to point in b.direction (projected)
+        const dirNoY = b.direction.clone(); dirNoY.y = 0; if (dirNoY.lengthSq() < 1e-6) dirNoY.copy(b.direction);
+        dirNoY.normalize();
+        tmpQ.identity().setFromUnitVectors(forwardVec, dirNoY);
+        // banking based on lateral component
+        rightVec.crossVectors(b.direction, new THREE.Vector3(0,1,0)).normalize();
+        const lateral = desiredDirVec.dot(rightVec);
         const bankAngle = THREE.MathUtils.clamp(-lateral * 0.9, -0.6, 0.6);
-        const bankQ = new THREE.Quaternion().setFromAxisAngle(b.direction.clone().normalize(), bankAngle);
-        targetQ.multiply(bankQ);
-        parent.quaternion.slerp(targetQ, 0.14);
+        const bankQ = tmpQ.clone().multiply(new THREE.Quaternion().setFromAxisAngle(b.direction.clone().normalize(), bankAngle));
+        parent.quaternion.slerp(bankQ, 0.14);
       }
 
-      // update mixer
-      b.mixer.update(delta);
+      // update mixer (animations)
+      if (b.mixer) b.mixer.update(delta);
     }
 
     butterflyFliers.push(flyButterfly);
   });
 }
-
-
 
 // usage (keep your calls)
 addButterfly("./assets/Butterfly.glb", { name: "ButterflyA", scale: 0.8 });
@@ -716,152 +766,233 @@ addButterfly("./assets/Butterfly.glb", { name: "ButterflyC", scale: 1.0 });
 
 // ---- update loop ----
 function updateButterflies(delta) {
-  for (const fly of butterflyFliers) fly(delta);
+  for (const fly of butterflyFliers) {
+    try { fly(delta); } catch (e) { console.warn('butterfly fly error', e); }
+  }
 }
 
 
 
-  // -----------------------------
-  // Bubble Settings
-  // -----------------------------
-  const bubbleCount = 50;       // 🔹 How many bubbles to spawn
-  const bubbleMinSize = 0.2;    // 🔹 Minimum bubble size
-  const bubbleMaxSize = 1.0;    // 🔹 Maximum bubble size
 
-  // ---- Create bubbles ----
-  const textureLoader = new THREE.TextureLoader();
-  const bubbleTexture = textureLoader.load("./assets/World-Map.png"); // <- replace with your PNG path
-  const bubbleGeometry = new THREE.SphereGeometry(5, 8, 8);
-  const bubbleMaterial = new THREE.MeshPhysicalMaterial({
-    color: 0x88ccff, transmission: 1.0, opacity: 0.7, transparent: true,
-    roughness: 0, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.1, depthWrite: false,
-    emissiveMap: bubbleTexture, emissive: new THREE.Color(0x88ccff), emissiveIntensity: 0.1
-  });
-  const bubbles = new THREE.InstancedMesh(bubbleGeometry, bubbleMaterial, bubbleCount);
-  scene.add(bubbles);
+ // -----------------------------
+// Bubble Settings (improved)
+// -----------------------------
+const bubbleCount = 50;       // 🔹 How many bubbles to spawn
+const bubbleMinSize = 0.2;    // 🔹 Minimum bubble size
+const bubbleMaxSize = 1.0;    // 🔹 Maximum bubble size
 
-  const bubbleData = [];
-  const bubbleDummy = new THREE.Object3D();
+// spawn extents (reused from your code)
+const spawnRadius = 100;
+const spawnMinY = 2;
+const spawnMaxY = 40;
+const speedMin = 0.1;
+const speedMax = 1;
 
-  // --- bubble creation (with per-bubble rotation state) ---
-  const spawnRadius = 100;
-  const spawnMinY = 2;
-  const spawnMaxY = 40;
-  const speedMin = 0.1;
-  const speedMax = 1;
+// buoyancy / drag tuning
+const BASE_LIFT = 0.6;     // base upward acceleration (units/s^2)
+const BASE_DRAG = 0.6;     // drag coefficient (per second)
+const LATERAL_AMP = 0.6;   // how strongly bubbles drift sideways
+const WOBBLE_AMP = 0.004;   // how much the bubble scale wobbles (fraction)
+const SURFACE_POP_MARGIN = 2; // how far above spawnMaxY we consider "popped"
+
+// ---- Create bubbles (instanced) ----
+const textureLoader = new THREE.TextureLoader();
+const bubbleTexture = textureLoader.load("./assets/World-Map.png"); // keep yours
+
+// keep your geometry as-is to avoid breaking scale assumptions (you scale per-instance)
+const bubbleGeometry = new THREE.SphereGeometry(5, 8, 8);
+const bubbleMaterial = new THREE.MeshPhysicalMaterial({
+  color: 0x88ccff,
+  transmission: 1.0,
+  opacity: 0.7,
+  transparent: true,
+  roughness: 0,
+  metalness: 0,
+  clearcoat: 1,
+  clearcoatRoughness: 0.1,
+  depthWrite: false,
+  emissiveMap: bubbleTexture,
+  emissive: new THREE.Color(0x88ccff),
+  emissiveIntensity: 0.1
+});
+const bubbles = new THREE.InstancedMesh(bubbleGeometry, bubbleMaterial, bubbleCount);
+bubbles.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+scene.add(bubbles);
+
+const bubbleData = [];
+const bubbleDummy = new THREE.Object3D();
+
+// helper to spawn/reset a bubble into bubbleData[index]
+function spawnBubble(b, i) {
+  // random cylindrical distribution
+  const r = Math.sqrt(Math.random()) * spawnRadius;
+  const theta = Math.random() * Math.PI * 2;
+  b.position.set(Math.cos(theta) * r, spawnMinY + Math.random() * (spawnMaxY - spawnMinY), Math.sin(theta) * r);
+
+  // size
+  b.scale = bubbleMinSize + Math.random() * (bubbleMaxSize - bubbleMinSize);
+
+  // velocity: small upward bias + random lateral
+  const dir = new THREE.Vector3(Math.random() - 0.5, 0.2 + Math.random() * 0.8, Math.random() - 0.5).normalize();
+  const speed = speedMin + Math.random() * (speedMax - speedMin);
+  b.velocity.copy(dir.multiplyScalar(speed));
+
+  // physics tuning per-bubble (makes big bubbles rise faster)
+  b.buoyancy = BASE_LIFT * (0.6 + 0.8 * Math.random()) * b.scale; // ~scale * constant
+  b.drag = BASE_DRAG * (0.6 + 0.6 * Math.random()); // variance in drag
+
+  // lateral drift / wobble params
+  b.phase = Math.random() * Math.PI * 2;
+  b.lateralAmp = LATERAL_AMP * (0.3 + Math.random() * 1.2) * b.scale;
+  b.lateralFreq = 0.6 + Math.random() * 1.4;
+  b.wobbleAmp = WOBBLE_AMP * (0.6 + Math.random() * 1.2);
+
+  // rotation
+  b.rotationSpeed = THREE.MathUtils.randFloat(-0.6, 0.6);
+  b.rotationY = Math.random() * Math.PI * 2;
+
+  // store index for instance updates
+  b._i = i;
+}
+
+// initial spawn
+for (let i = 0; i < bubbleCount; i++) {
+  const b = {
+    position: new THREE.Vector3(),
+    velocity: new THREE.Vector3(),
+    scale: 1,
+    rotationSpeed: 0,
+    rotationY: 0,
+    phase: 0,
+    buoyancy: BASE_LIFT,
+    drag: BASE_DRAG,
+    lateralAmp: LATERAL_AMP,
+    lateralFreq: 1.0,
+    wobbleAmp: WOBBLE_AMP,
+    _i: i
+  };
+  spawnBubble(b, i);
+  bubbleData.push(b);
+
+  // set instance matrix once at spawn
+  bubbleDummy.position.copy(b.position);
+  bubbleDummy.scale.set(b.scale, b.scale, b.scale);
+  bubbleDummy.rotation.set(0, b.rotationY, 0);
+  bubbleDummy.updateMatrix();
+  bubbles.setMatrixAt(i, bubbleDummy.matrix);
+}
+bubbles.instanceMatrix.needsUpdate = true;
+
+// ---- updateBubbles (buoyancy + collisions + wobble) ----
+let collisionFrameCounter = 0;
+const COLLISION_SKIP = 1;
+
+function updateBubbles(delta) {
+  // temporaries (cached on function to avoid recreation)
+  const tmpClosest = updateBubbles._tmpClosest || (updateBubbles._tmpClosest = new THREE.Vector3());
+  const tmpNormal = updateBubbles._tmpNormal || (updateBubbles._tmpNormal = new THREE.Vector3());
+  const tmpNextPos = updateBubbles._tmpNextPos || (updateBubbles._tmpNextPos = new THREE.Vector3());
+  const tmpRespawnDir = updateBubbles._tmpRespawnDir || (updateBubbles._tmpRespawnDir = new THREE.Vector3());
+
+  const doCollisions = (++collisionFrameCounter % COLLISION_SKIP) === 0;
+  // accumulate a running time for smooth noise/wobble
+  updateBubbles._time = (updateBubbles._time || 0) + delta;
+  const time = updateBubbles._time;
 
   for (let i = 0; i < bubbleCount; i++) {
-    const r = Math.sqrt(Math.random()) * spawnRadius;
-    const theta = Math.random() * Math.PI * 2;
-    const x = Math.cos(theta) * r;
-    const z = Math.sin(theta) * r;
-    const y = spawnMinY + Math.random() * (spawnMaxY - spawnMinY);
+    const b = bubbleData[i];
 
-    const position = new THREE.Vector3(x, y, z);
+    // 1) lateral drift & wobble phase progression
+    b.phase += b.lateralFreq * delta;
 
-    let dir = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5);
-    if (dir.lengthSq() === 0) dir.set(0, 1, 0);
-    dir.normalize();
-    const speed = speedMin + Math.random() * (speedMax - speedMin);
-    const velocity = dir.multiplyScalar(speed);
+    // 2) buoyancy: upward acceleration proportional to bubble size (volume/area heuristic)
+    //    dv = buoyancy * dt  (simple integrator)
+    b.velocity.y += b.buoyancy * delta;
 
-    const scale = bubbleMinSize + Math.random() * (bubbleMaxSize - bubbleMinSize);
+    // 3) gentle lateral sinusoidal current (makes motion organic)
+    b.velocity.x += Math.cos(b.phase + i) * b.lateralAmp * delta;
+    b.velocity.z += Math.sin(b.phase * 0.7 - i * 0.5) * b.lateralAmp * 0.7 * delta;
 
-    // rotation speed (radians per second) and initial rotation state
-    const rotationSpeed = THREE.MathUtils.randFloat(-0.1, 0.1); // random rotation speed
-    const rotationY = Math.random() * Math.PI * 2; // random starting rotation
+    // 4) apply fluid drag (damp velocities) — scaled by delta so it's framerate-independent
+    const dragFactor = Math.max(0, 1 - b.drag * delta);
+    b.velocity.multiplyScalar(dragFactor);
 
-    bubbleData.push({ position, velocity, scale, rotationSpeed, rotationY });
+    // predicted next position
+    tmpNextPos.copy(b.position).addScaledVector(b.velocity, delta);
 
-    // set instance matrix once at spawn
-    bubbleDummy.position.copy(position);
-    bubbleDummy.scale.set(scale, scale, scale);
-    bubbleDummy.rotation.set(0, rotationY, 0);
+    // 5) collisions against simpleColliders (broad-phase + narrow-phase)
+    if (doCollisions && Array.isArray(simpleColliders) && simpleColliders.length > 0) {
+      let collided = false;
+      for (let c = 0; c < simpleColliders.length; c++) {
+        const col = simpleColliders[c];
+        // bounding-sphere quick test
+        const rsum = (col.sphere && col.sphere.radius ? col.sphere.radius : 0) + b.scale;
+        if (tmpNextPos.distanceToSquared(col.sphere.center) > (rsum * rsum)) continue;
+
+        // clamp to collider AABB (narrow phase)
+        tmpClosest.copy(tmpNextPos);
+        tmpClosest.clamp(col.box.min, col.box.max);
+
+        const distSq = tmpClosest.distanceToSquared(tmpNextPos);
+        if (distSq <= (b.scale * b.scale)) {
+          // collision occured: compute normal, reflect velocity and nudge out
+          tmpNormal.copy(tmpNextPos).sub(tmpClosest);
+          if (tmpNormal.lengthSq() === 0) tmpNormal.set(0, 1, 0);
+          else tmpNormal.normalize();
+
+          // reflect and dampen, then add a small upward nudge to preserve buoyancy feel
+          b.velocity.reflect(tmpNormal).multiplyScalar(0.7);
+          b.velocity.addScaledVector(tmpNormal, 0.15); // slight push away from surface
+          b.velocity.addScaledVector(new THREE.Vector3(0,1,0), Math.abs(b.buoyancy) * 0.05); // small upward kick
+
+          // move next position slightly out of collider surface
+          tmpNextPos.copy(tmpClosest).addScaledVector(tmpNormal, b.scale * 0.6);
+
+          collided = true;
+          break;
+        }
+      }
+      if (collided) {
+        // gentle additional damping after collision
+        b.velocity.multiplyScalar(0.95);
+      }
+    }
+
+    // 6) apply next position
+    b.position.copy(tmpNextPos);
+
+    // 7) bubble popping / respawn when reaching the surface (or going too high)
+    const surfaceY = spawnMaxY + SURFACE_POP_MARGIN;
+    if (b.position.y >= surfaceY) {
+      // small chance to "pop" visually before respawn: shrink and respawn
+      // immediate respawn keeps it simple and avoids long-lived tiny bubbles
+      spawnBubble(b, i);
+    }
+
+    // 8) fallback respawn if below world (safety)
+    if (b.position.y <= 0) {
+      spawnBubble(b, i);
+    }
+
+    // 9) rotation update
+    b.rotationY += b.rotationSpeed * delta;
+
+    // 10) wobble scale (slight pulsation to sell bubble elasticity)
+    const wobble = 1 + Math.sin(b.phase * 3 + time * 4 + i) * b.wobbleAmp;
+
+    // 11) Update instance matrix for rendering (position, scale, rotation)
+    bubbleDummy.position.copy(b.position);
+    const finalScale = Math.max(0.001, b.scale * wobble);
+    bubbleDummy.scale.set(finalScale, finalScale, finalScale);
+    bubbleDummy.rotation.set(0, b.rotationY, 0);
     bubbleDummy.updateMatrix();
     bubbles.setMatrixAt(i, bubbleDummy.matrix);
   }
+
+  // push instance updates to GPU
   bubbles.instanceMatrix.needsUpdate = true;
+}
 
-  // ---- updateBubbles (fixed, reuses temps; updates per-bubble rotationY) ----
-  let collisionFrameCounter = 0;
-  const COLLISION_SKIP = 1;
-
-  function updateBubbles(delta) {
-    // temporary vectors reused to avoid allocations
-    const tmpClosest = updateBubbles._tmpClosest || (updateBubbles._tmpClosest = new THREE.Vector3());
-    const tmpNormal = updateBubbles._tmpNormal || (updateBubbles._tmpNormal = new THREE.Vector3());
-    const tmpNextPos = updateBubbles._tmpNextPos || (updateBubbles._tmpNextPos = new THREE.Vector3());
-
-    const doCollisions = (++collisionFrameCounter % COLLISION_SKIP) === 0;
-
-    for (let i = 0; i < bubbleCount; i++) {
-      const b = bubbleData[i];
-
-      // predicted next position (reuse tmpNextPos)
-      tmpNextPos.copy(b.position).addScaledVector(b.velocity, delta);
-
-      if (doCollisions && simpleColliders.length > 0) {
-        let collided = false;
-        for (let c = 0; c < simpleColliders.length; c++) {
-          const col = simpleColliders[c];
-
-          // broad-phase: sphere vs collider bounding-sphere
-          const rsum = col.sphere.radius + b.scale;
-          if (tmpNextPos.distanceToSquared(col.sphere.center) > (rsum * rsum)) continue;
-
-          // narrow-phase: clamp to AABB
-          tmpClosest.copy(tmpNextPos);
-          tmpClosest.clamp(col.box.min, col.box.max);
-
-          const distSq = tmpClosest.distanceToSquared(tmpNextPos);
-          if (distSq <= (b.scale * b.scale)) {
-            // collision detected
-            tmpNormal.copy(tmpNextPos).sub(tmpClosest);
-            if (tmpNormal.lengthSq() === 0) tmpNormal.set(0, 1, 0);
-            else tmpNormal.normalize();
-
-            // reflect velocity and dampen slightly
-            b.velocity.reflect(tmpNormal).multiplyScalar(0.9);
-            tmpNextPos.copy(tmpClosest).addScaledVector(tmpNormal, b.scale * 0.6);
-
-            collided = true;
-            break;
-          }
-        }
-        if (collided) b.velocity.multiplyScalar(0.98);
-      }
-
-      // apply next position
-      b.position.copy(tmpNextPos);
-
-      // respawn if below or equal to X-axis (y <= 0)
-      if (b.position.y <= 0) {
-        const r = Math.sqrt(Math.random()) * spawnRadius;
-        const theta = Math.random() * Math.PI * 2;
-        b.position.x = Math.cos(theta) * r;
-        b.position.y = spawnMinY + Math.random() * (spawnMaxY - spawnMinY);
-        b.position.z = Math.sin(theta) * r;
-
-        let dir = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5);
-        if (dir.lengthSq() === 0) dir.set(0, 1, 0);
-        dir.normalize();
-        const speed = speedMin + Math.random() * (speedMax - speedMin);
-        b.velocity.copy(dir.multiplyScalar(speed));
-      }
-
-      // --- rotation update: use b.rotationSpeed and delta (store rotationY in bubbleData) ---
-      b.rotationY += b.rotationSpeed * delta;
-
-      // Update instance matrix with rotation
-      bubbleDummy.position.copy(b.position);
-      bubbleDummy.scale.set(b.scale, b.scale, b.scale);
-      bubbleDummy.rotation.set(0, b.rotationY, 0);
-      bubbleDummy.updateMatrix();
-      bubbles.setMatrixAt(i, bubbleDummy.matrix);
-    }
-
-    bubbles.instanceMatrix.needsUpdate = true;
-  }
 
   // Water
   const waterGeometry = new THREE.PlaneGeometry(300, 300);
@@ -1181,184 +1312,362 @@ function updateButterflies(delta) {
 
 
 
+// ----------------------------//
+// ----- ANIMATION LOOP -------//
+// ----------------------------//
+
+// ---------- Fixed timestep config ----------
+const FIXED_STEP_MS = 16;
+const FIXED_STEP_S = FIXED_STEP_MS / 1000; // 0.016 seconds
+const MAX_STEPS_PER_FRAME = 10; // safety cap to avoid spiral-of-death
+
+// accumulator for fixed-step simulation
+let accumulator = 0;
+
+// interpolation snapshots for player position
+const prevPlayerPos = new THREE.Vector3();
+const currPlayerPos = new THREE.Vector3();
+if (playerCapsule) {
+  prevPlayerPos.copy(playerCapsule.end);
+  currPlayerPos.copy(playerCapsule.end);
+}
+
+// ---------- Simulation function (delta in seconds) ----------
+function updatePlayer(deltaS) {
+  // --- horizontal movement (stepped) ---
+  const move = new THREE.Vector3();
+  const forward = new THREE.Vector3();
+  yawObject.getWorldDirection(forward);
+  forward.y = 0;
+  forward.normalize();
+
+  const right = new THREE.Vector3();
+  right.crossVectors(new THREE.Vector3(0, 1, 0), forward).normalize();
+
+  if (keyStates['KeyW']) move.add(forward.clone().negate());
+  if (keyStates['KeyS']) move.add(forward);
+  if (keyStates['KeyA']) move.add(right.clone().negate());
+  if (keyStates['KeyD']) move.add(right);
+
+  let desiredMove = new THREE.Vector3();
+  if (move.lengthSq() > 0) {
+    desiredMove.copy(move).normalize().multiplyScalar(SPEED * deltaS);
+  }
+
+  // step horizontally in small increments to avoid invisible-wall behavior
+  const maxStep = 0.25;
+  const totalDist = desiredMove.length();
+  if (totalDist > 0) {
+    const steps = Math.max(1, Math.ceil(totalDist / maxStep));
+    const stepVec = desiredMove.clone().multiplyScalar(1 / steps);
+    for (let i = 0; i < steps; i++) {
+      playerCapsule.translate(stepVec);
+      // resolve collisions but DO NOT set grounded from horizontal pushes
+      try {
+        resolveCollisions(false);
+      } catch (e) {
+        console.warn('resolveCollisions (horizontal) error:', e);
+      }
+    }
+  }
+
+  // --- Quick floor-safety fallback (prevents rare slip-throughs) ---
+  if (playerCapsule) {
+    const capsuleBottomY = Math.min(playerCapsule.start.y, playerCapsule.end.y);
+    const floorY = (typeof floor !== "undefined" && floor && floor.position) ? floor.position.y : -1;
+    const penetration = (capsuleBottomY - playerCapsule.radius) - floorY;
+    if (penetration < -0.001) {
+      const pushUp = -penetration + 0.001;
+      playerCapsule.translate(new THREE.Vector3(0, pushUp, 0));
+      verticalVelocity = 0;
+      playerOnGround = true;
+    }
+  }
+
+  // --- Vertical integration ---
+  if (!playerOnGround) {
+    verticalVelocity += GRAVITY * deltaS;
+  } else {
+    verticalVelocity = Math.max(verticalVelocity, 0);
+  }
+
+  // apply vertical displacement and now allow grounding corrections (landing detection)
+  const dY = verticalVelocity * deltaS;
+  if (Math.abs(dY) > 1e-6) {
+    playerCapsule.translate(new THREE.Vector3(0, dY, 0));
+    try {
+      const landed = resolveCollisions(true); // allowGrounding = true
+      playerOnGround = !!landed;
+    } catch (e) {
+      console.warn('resolveCollisions (vertical) error:', e);
+    }
+  } else {
+    try {
+      const landed = resolveCollisions(true);
+      playerOnGround = !!landed;
+    } catch (e) {
+      console.warn('resolveCollisions (vertical-check) error:', e);
+    }
+  }
+
+  // If grounded, zero vertical velocity
+  if (playerOnGround) verticalVelocity = 0;
+
+  // small ground-normal projection to avoid downhill sliding when grounded
+  if (playerOnGround && desiredMove.lengthSq() > 0) {
+    let groundNormal = null;
+    let bestDist = Infinity;
+    const downOrigin = playerCapsule.end.clone();
+
+    const inverse = new THREE.Matrix4();
+    for (const colMesh of collisionMeshes) {
+      if (!colMesh || !colMesh.geometry || !colMesh.geometry.boundsTree) continue;
+      inverse.copy(colMesh.matrixWorld).invert();
+      const localOrigin = downOrigin.clone().applyMatrix4(inverse);
+
+      // small local bbox near origin
+      const rayBox = new THREE.Box3(
+        new THREE.Vector3(localOrigin.x - 0.1, localOrigin.y - 2, localOrigin.z - 0.1),
+        new THREE.Vector3(localOrigin.x + 0.1, localOrigin.y + 0.1, localOrigin.z + 0.1)
+      );
+
+      colMesh.geometry.boundsTree.shapecast({
+        intersectsBounds: (box) => box.intersectsBox(rayBox),
+        intersectsTriangle: (tri) => {
+          const p = tri.closestPointToPoint(localOrigin, new THREE.Vector3());
+          const worldP = p.clone().applyMatrix4(colMesh.matrixWorld);
+          const dist = downOrigin.distanceTo(worldP);
+          if (dist < bestDist && dist <= 2.0) {
+            bestDist = dist;
+            const n = tri.getNormal(new THREE.Vector3())
+              .applyMatrix3(new THREE.Matrix3().getNormalMatrix(colMesh.matrixWorld))
+              .normalize();
+            groundNormal = n.clone();
+          }
+        }
+      });
+    }
+
+    if (groundNormal) {
+      const moveOnPlane = desiredMove.clone().projectOnPlane(groundNormal);
+      if (moveOnPlane.lengthSq() > 0) {
+        playerCapsule.translate(moveOnPlane);
+        try {
+          resolveCollisions(false);
+        } catch (e) {
+          console.warn('resolveCollisions (ground project) error:', e);
+        }
+      }
+    }
+  }
+
+  // NOTE: yawObject position will be updated from the render loop (interpolated)
+}
+
+// ---------- renderer loop with fixed-step physics ----------
+renderer.setAnimationLoop(() => {
+  // clamp frame delta to avoid huge spikes
+  const delta = Math.min(clock.getDelta(), 0.05); // seconds
+
+  // update time-driven materials
+  if (grassMaterial && grassMaterial.uniforms && grassMaterial.uniforms.time) grassMaterial.uniforms.time.value += delta;
+  if (stemMaterial && stemMaterial.uniforms && stemMaterial.uniforms.time) stemMaterial.uniforms.time.value += delta;
+  if (petalMaterial && petalMaterial.uniforms && petalMaterial.uniforms.time) petalMaterial.uniforms.time.value += delta;
+  if (water && water.material && water.material.uniforms && water.material.uniforms.time) water.material.uniforms.time.value += delta;
+
+  // animate actors (once each)
+  if (Array.isArray(fishSwimmers)) fishSwimmers.forEach((swim) => swim(delta));
+  if (Array.isArray(butterflyFliers)) butterflyFliers.forEach((fly) => fly(delta));
+  if (typeof updateBubbles === 'function') updateBubbles(delta);
 
   
-  // ANIMATION LOOP //
-  renderer.setAnimationLoop(() => {
-    const delta = Math.min(clock.getDelta(), 0.05);
+  //----------------------//
+  // ---- Lens flare ---- //
+  //----------------------//
 
-    // update time-driven materials
-    grassMaterial.uniforms.time.value += delta;
-    stemMaterial.uniforms.time.value += delta;
-    petalMaterial.uniforms.time.value += delta;
-    if (water.material.uniforms && water.material.uniforms.time) water.material.uniforms.time.value += delta;
+let flareSystem = null;
 
-    // animate actors (once each)
+function createLensFlare() {
+  // avoid double creation
+  if (flareSystem) return flareSystem;
 
-    fishSwimmers.forEach((swim) => swim(delta));
-    butterflyFliers.forEach((fly) => fly(delta))
+  // small helpers to build procedural textures
+  function makeRingTexture(size = 256, innerR = 0.35, outerR = 0.5, color = '#ffffff', feather = 0.02) {
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const ctx = c.getContext('2d');
+    const cx = size / 2, cy = size / 2;
+    const grad = ctx.createRadialGradient(cx, cy, innerR * size, cx, cy, outerR * size);
+    grad.addColorStop(0, color);
+    grad.addColorStop(Math.max(0, 1 - feather), color);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+    return new THREE.CanvasTexture(c);
+  }
 
-    updateBubbles(delta);
+  function makeDiskTexture(size = 256, color = '#ffffff', soft = 0.6) {
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const ctx = c.getContext('2d');
+    const cx = size / 2, cy = size / 2;
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, size/2);
+    grad.addColorStop(0, color);
+    grad.addColorStop(soft, color);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,size,size);
+    return new THREE.CanvasTexture(c);
+  }
+
+  function makeStreakTexture(w = 256, h = 64) {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    // horizontal soft streak
+    const grad = ctx.createLinearGradient(0, h/2, w, h/2);
+    grad.addColorStop(0.0, 'rgba(255,255,255,0)');
+    grad.addColorStop(0.45, 'rgba(255,255,255,0.8)');
+    grad.addColorStop(0.5, 'rgba(255,255,255,1.0)');
+    grad.addColorStop(0.55, 'rgba(255,255,255,0.8)');
+    grad.addColorStop(1.0, 'rgba(255,255,255,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,w,h);
+    // vertical soft fade to avoid hard edges
+    const vGrad = ctx.createLinearGradient(0,0,0,h);
+    vGrad.addColorStop(0,'rgba(255,255,255,0)');
+    vGrad.addColorStop(0.5,'rgba(255,255,255,1)');
+    vGrad.addColorStop(1,'rgba(255,255,255,0)');
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillStyle = vGrad;
+    ctx.fillRect(0,0,w,h);
+    return new THREE.CanvasTexture(c);
+  }
+
+  // Textures
+  const texMain = makeDiskTexture(256, '#fff', 0.4);
+  const texHalo = makeDiskTexture(256, '#ffd9c7', 0.6);
+  const texRingA = makeRingTexture(256, 0.42, 0.52, '#ffffff', 0.05);
+  const texRingB = makeRingTexture(256, 0.25, 0.42, '#ffccaa', 0.06);
+  const texGhost = makeDiskTexture(128, '#ffb3b3', 0.25);
+  const texStreak = makeStreakTexture(512, 64);
+
+  // Materials (additive, no depth)
+  const matMain = new THREE.MeshBasicMaterial({ map: texMain, transparent: true, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false });
+  const matHalo = new THREE.MeshBasicMaterial({ map: texHalo, transparent: true, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false });
+  const matRingA = new THREE.MeshBasicMaterial({ map: texRingA, transparent: true, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false });
+  const matRingB = new THREE.MeshBasicMaterial({ map: texRingB, transparent: true, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false });
+  const matGhost = new THREE.MeshBasicMaterial({ map: texGhost, transparent: true, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false });
+  const matStreak = new THREE.MeshBasicMaterial({ map: texStreak, transparent: true, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, side: THREE.DoubleSide });
+
+  // plane geometry for quads
+  const quad = new THREE.PlaneGeometry(1, 1);
+
+  // Root group
+  const group = new THREE.Group();
+  group.name = 'LensFlareGroup';
+  scene.add(group);
+
+  // Main glow (closest to camera)
+  const main = new THREE.Mesh(quad, matMain);
+  main.userData.baseScale = 2.0;
+  group.add(main);
+
+  // Halo
+  const halo = new THREE.Mesh(quad, matHalo);
+  halo.userData.baseScale = 3.6;
+  group.add(halo);
+
+  // Streak (an anamorphic horizontal streak)
+  const streak = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.0), matStreak);
+  streak.userData.baseScale = 2.6;
+  group.add(streak);
+
+  // Chromatic ghost sprites (multiple colored ghosts along the axis)
+  const ghosts = [];
+  const ghostColors = [0xffe6e6, 0xe6f0ff, 0xfff6e0]; // warm/pale chromas
+  for (let i = 0; i < 4; i++) {
+    const m = matGhost.clone();
+    const mesh = new THREE.Mesh(quad, m);
+    mesh.userData.baseScale = 0.6 + i * 0.25;
+    mesh.material.color = new THREE.Color(ghostColors[i % ghostColors.length]);
+    group.add(mesh);
+    ghosts.push(mesh);
+  }
+
+  // Concentric rings (3 rings that rotate/pulse)
+  const rings = [];
+  for (let i = 0; i < 3; i++) {
+    const mat = (i % 2 === 0) ? matRingA.clone() : matRingB.clone();
+    const ring = new THREE.Mesh(quad, mat);
+    ring.userData.baseScale = 0.6 + i * 0.9;
+    ring.userData.speed = 0.2 + i * 0.14;
+    ring.material.opacity = 0.9;
+    group.add(ring);
+    rings.push(ring);
+  }
+
+  // small lens artifacts (subtle dots along axis)
+  const artifacts = [];
+  for (let i = 0; i < 5; i++) {
+    const m = matGhost.clone();
+    const mesh = new THREE.Mesh(quad, m);
+    mesh.userData.baseScale = 0.08 + Math.random() * 0.2;
+    mesh.material.color = new THREE.Color(0xffffff).lerp(new THREE.Color(0xffccaa), Math.random() * 0.6);
+    group.add(mesh);
+    artifacts.push(mesh);
+  }
+
+  // store system
+  flareSystem = {
+    group, main, halo, streak, ghosts, rings, artifacts,
+    // runtime values reused (to avoid allocations)
+    _tmpCamPos: new THREE.Vector3(),
+    _tmpBasePos: new THREE.Vector3(),
+    _tmpRight: new THREE.Vector3(),
+    _tmpUp: new THREE.Vector3(),
+    _tmpScreen: new THREE.Vector3(),
+    occlusionCached: 0 // smoothed occlusion value
+  };
+
+  return flareSystem;
+}
+//-------------------------------------------------------------------//
 
 
+  // Respawn if too low
+  if (playerCapsule && playerCapsule.end.y < -10) resetPlayerToSpawn();
+  if (!playerCapsule) { renderer.render(scene, camera); return; }
 
+  // ---------- Fixed-step physics accumulation & stepping ----------
+  accumulator += delta; // seconds
 
+  // snapshot before stepping
+  prevPlayerPos.copy(currPlayerPos);
 
-    
-    // lens flare (improved multi-layer update)
-    const camPos = camera.getWorldPosition(_lf_camPos);
-    _lf_lightDir.copy(dirLight.position).sub(camPos).normalize();
+  let steps = 0;
+  while (accumulator >= FIXED_STEP_S && steps < MAX_STEPS_PER_FRAME) {
+    updatePlayer(FIXED_STEP_S);
+    currPlayerPos.copy(playerCapsule.end);
+    accumulator -= FIXED_STEP_S;
+    steps++;
+  }
 
-    // visibility factor (how directly camera faces the light)
-    const cameraDir = camera.getWorldDirection(new THREE.Vector3());
-    const vis = THREE.MathUtils.clamp(cameraDir.dot(_lf_lightDir), 0, 1);
+  // if we hit the cap, drop remaining time to avoid spiral
+  if (steps === MAX_STEPS_PER_FRAME) {
+    accumulator = 0;
+    // optionally: console.warn('Max physics steps/frame reached; dropping leftover time.');
+  }
 
-    // base position slightly in front of camera along the light direction
-    const baseDist = 6.0;
-    const basePos = camPos.clone().add(_lf_lightDir.clone().multiplyScalar(baseDist));
-    flareGroup.position.copy(basePos);
+  // interpolation alpha (0..1)
+  const alpha = THREE.MathUtils.clamp(accumulator / FIXED_STEP_S, 0, 1);
 
-    // orient a small streak angle in screen-space
-    const screenPos = basePos.clone().project(camera); // NDC coords -1..1
-    const angle = Math.atan2(screenPos.y, screenPos.x);
+  // interpolate player position for smooth rendering
+  yawObject.position.lerpVectors(prevPlayerPos, currPlayerPos, alpha);
 
-    // compute camera right/up for small chromatic offsets
-    camera.getWorldDirection(_lf_tmp);
-    _lf_right.crossVectors(_lf_tmp, new THREE.Vector3(0,1,0)).normalize();
-    _lf_up.crossVectors(_lf_right, _lf_tmp).normalize();
-
-    // place layers with slight offsets and scale them by visibility
-    flareMain.position.copy(basePos).add(_lf_right.clone().multiplyScalar(0.0)).add(_lf_up.clone().multiplyScalar(0.0));
-    flareMain.material.opacity = vis * 0.95;
-    flareMain.scale.setScalar(flareMain.userData.baseScale * (0.6 + 0.8 * vis));
-
-    flareHalo.position.copy(basePos).add(_lf_right.clone().multiplyScalar(0.15)).add(_lf_up.clone().multiplyScalar(-0.05));
-    flareHalo.material.opacity = vis * 0.7;
-    flareHalo.scale.setScalar(flareHalo.userData.baseScale * (0.6 + 1.2 * vis));
-
-    // streak sits along the projected axis; rotate in screen-space for realism
-    flareStreak.position.copy(basePos).add(_lf_lightDir.clone().multiplyScalar(-2.0));
-    // apply small lateral chromatic offset
-    flareStreak.position.add(_lf_right.clone().multiplyScalar(0.1));
-    flareStreak.material.opacity = Math.pow(vis, 1.2) * 0.9;
-    flareStreak.scale.set(flareStreak.userData.baseScale * (0.4 + 1.2 * vis), 1.6 * (0.2 + vis), 1);
-    flareStreak.material.rotation = angle;
-
-    // optional: fade out rapidly if behind camera
-    flareGroup.visible = vis > 0.01;
-
-    // Respawn if too low
-    if (playerCapsule && playerCapsule.end.y < -10) resetPlayerToSpawn();
-    if (!playerCapsule) { renderer.render(scene, camera); return; }
-
-    // --- Horizontal movement (stepped) ---
-    const move = new THREE.Vector3();
-    const forward = new THREE.Vector3();
-    yawObject.getWorldDirection(forward);
-    forward.y = 0; forward.normalize();
-    const right = new THREE.Vector3();
-    right.crossVectors(new THREE.Vector3(0,1,0), forward).normalize();
-
-    if (keyStates['KeyW']) move.add(forward.clone().negate());
-    if (keyStates['KeyS']) move.add(forward);
-    if (keyStates['KeyA']) move.add(right.clone().negate());
-    if (keyStates['KeyD']) move.add(right);
-
-    let desiredMove = new THREE.Vector3();
-    if (move.lengthSq() > 0) desiredMove.copy(move).normalize().multiplyScalar(SPEED * delta);
-
-    // step horizontally in small increments to avoid invisible-wall behavior
-    const maxStep = 0.25;
-    const totalDist = desiredMove.length();
-    if (totalDist > 0) {
-      const steps = Math.max(1, Math.ceil(totalDist / maxStep));
-      const stepVec = desiredMove.clone().multiplyScalar(1 / steps);
-      for (let i = 0; i < steps; i++) {
-        playerCapsule.translate(stepVec);
-        // resolve collisions but DO NOT set grounded from horizontal pushes
-        const upCorrection = resolveCollisions(false); // allowGrounding = false
-        if (upCorrection) {
-          // don't set playerOnGround here
-        }
-      }
-    }
-
-    // --- Quick floor-safety fallback (prevents rare slip-throughs) ---
-    if (playerCapsule) {
-      const floorY = (typeof floor !== "undefined" && floor) ? floor.position.y : -1;
-      const capsuleBottomY = playerCapsule.start.y;
-      const penetration = (capsuleBottomY - playerCapsule.radius) - floorY;
-      if (penetration < -0.001) {
-        const pushUp = -(penetration) + 0.001;
-        playerCapsule.translate(new THREE.Vector3(0, pushUp, 0));
-        verticalVelocity = 0;
-        playerOnGround = true;
-      }
-    }
-
-    // --- Vertical integration ---
-    if (!playerOnGround) verticalVelocity += GRAVITY * delta;
-    else verticalVelocity = Math.max(verticalVelocity, 0); // if grounded, don't accumulate downward velocity
-
-    // apply vertical displacement and now allow grounding corrections (landing detection)
-    const dY = verticalVelocity * delta;
-    if (Math.abs(dY) > 1e-6) {
-      playerCapsule.translate(new THREE.Vector3(0, dY, 0));
-      const landed = resolveCollisions(true); // allowGrounding = true
-      playerOnGround = landed ? true : false;
-    } else {
-      // still check collisions without moving (prevents tiny interpenetrations)
-      const landed = resolveCollisions(true);
-      playerOnGround = landed ? true : false;
-    }
-
-    // If grounded, zero vertical velocity
-    if (playerOnGround) verticalVelocity = 0;
-
-    // small ground-normal projection to avoid downhill sliding when grounded
-    if (playerOnGround && desiredMove.lengthSq() > 0) {
-      let groundNormal = null;
-      let bestDist = Infinity;
-      const downOrigin = playerCapsule.end.clone();
-      const inverse = new THREE.Matrix4();
-      for (const colMesh of collisionMeshes) {
-        if (!colMesh.geometry) continue;
-        inverse.copy(colMesh.matrixWorld).invert();
-        const localOrigin = downOrigin.clone().applyMatrix4(inverse);
-        // small local bbox near origin
-        const rayBox = new THREE.Box3(
-          new THREE.Vector3(localOrigin.x-0.1, localOrigin.y-2, localOrigin.z-0.1),
-          new THREE.Vector3(localOrigin.x+0.1, localOrigin.y+0.1, localOrigin.z+0.1)
-        );
-        colMesh.geometry.boundsTree.shapecast({
-          intersectsBounds: (box) => box.intersectsBox(rayBox),
-          intersectsTriangle: (tri) => {
-            const p = tri.closestPointToPoint(localOrigin, new THREE.Vector3());
-            const worldP = p.clone().applyMatrix4(colMesh.matrixWorld);
-            const dist = downOrigin.distanceTo(worldP);
-            if (dist < bestDist && dist <= 2.0) {
-              bestDist = dist;
-              const n = tri.getNormal(new THREE.Vector3()).applyMatrix3(new THREE.Matrix3().getNormalMatrix(colMesh.matrixWorld)).normalize();
-              groundNormal = n.clone();
-            }
-          }
-        });
-      }
-      if (groundNormal) {
-        const moveOnPlane = desiredMove.clone().projectOnPlane(groundNormal);
-        if (moveOnPlane.lengthSq() > 0) {
-          playerCapsule.translate(moveOnPlane);
-          resolveCollisions(false);
-        }
-      }
-    }
-
-    // update camera/player
-    yawObject.position.copy(playerCapsule.end);
-
-    renderer.render(scene, camera);
-  }); // end animation loop
-}); // end loadEnvironment
+  // final render
+  renderer.render(scene, camera);
+}); // end animation loop
 
 // -----------------------------
 // Resize handler
@@ -1371,3 +1680,4 @@ function onResize() {
   renderer.setSize(sizes.width, sizes.height);
 }
 window.addEventListener("resize", onResize);
+})
